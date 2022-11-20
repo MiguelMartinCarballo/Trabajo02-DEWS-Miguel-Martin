@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<agenda nombre="ContactosTrabajo">
+	<contacto tipo="persona">
+		<nombre>Ana</nombre>
+		<apellidos>Frutos Jarama</apellidos>
+		<direccion>Calle Calera 25 , 8-A</direccion>
+		<telefono>678445522</telefono>
+	</contacto>
+	<contacto tipo="persona">
+		<nombre>Antonio</nombre>
+		<apellidos>Miguel Bustos</apellidos>
+		<direccion>Calle La Mota 23, bajo</direccion>
+		<telefono>678865512</telefono>		
+	</contacto>
+	<contacto tipo="persona">
+		<nombre>Miguel</nombre>
+		<apellidos>Indurain Bahamontes</apellidos>
+		<direccion>Avenida la Cuesta 3, 6-C</direccion>
+		<telefono>615887735</telefono>		
+	</contacto>
+	<contacto tipo="empresa">
+		<nombre>Gestyser</nombre>		
+		<direccion>Polígono los Planos 4</direccion>
+		<telefono>978145266</telefono>		
+		<email>info@gestyser.com</email>		
+	</contacto>
+	<contacto tipo="empresa">
+		<nombre>Contadata</nombre>		
+		<direccion>Polígono la Albareda 15</direccion>
+		<telefono>976147788</telefono>		
+		<email>informacion@contadata.info</email>		
+	</contacto>
+	<contacto tipo="empresa">
+		<nombre>Teldate</nombre>		
+		<direccion>Calle la Informacion 74</direccion>
+		<telefono>978294821</telefono>		
+		<email>contacto@teldate.es</email>		
+	</contacto>
+</agenda>
