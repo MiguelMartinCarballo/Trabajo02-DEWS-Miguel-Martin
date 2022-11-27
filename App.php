@@ -135,7 +135,6 @@ class App
       if (isset($_POST["envio"])) {
         $credentials = $this->comprobarcredenciales($_POST["usuario"], $_POST["pw"]);
         if ($credentials === false) {
-          $error = 1;
           header("Location: ?method=login");
         } else {
           $_SESSION["usuariook"] = $credentials;
