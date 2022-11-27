@@ -3,6 +3,10 @@
 class App
 {
 
+  /**
+   * Se guardan las variables con los datos para conectar con la base de datos,
+   * el dsn, el usuario y la contraseña.
+   */
   public $dsn = 'mysql:dbname=agenda;host=localhost';
   public $usuario = "dbuser";
   public $password = "secret";
@@ -10,15 +14,16 @@ class App
 
   /**
    * Constructor
-   * inicia la clase iniciando una sesión
+   * inicia la clase iniciando una sesión,
+   * conecta con la base de datos mediante 'PDO'
    */
   public function __construct()
   {
     session_start();
 
-    try{
+    try {
       $this->db = new PDO($this->dsn, $this->usuario, $this->password);
-    } catch (PDOException $e){
+    } catch (PDOException $e) {
       echo "Error producido al conectar: " . $e->getMessage();
     }
   }
@@ -41,12 +46,12 @@ class App
 
   /**
    * login
-   * Si la cookie 'nombre' esta establecida redirige al método 'home'
-   * si no, incluye la vista 'login.php'
+   * Si la sesión 'usuariook' esta establecida redirige al método 'home', porque ya se ha iniciado sesión en la sesión actual
+   * si no, incluye la vista 'login.php', donde se podrá iniciar sesión
    */
   public function login()
   {
-    if (isset($_COOKIE['name'])) {
+    if (isset($_SESSION['usuariook'])) {
       header('Location: ?method=home');
     } else {
       include('views/login.php');
@@ -54,14 +59,59 @@ class App
   }
 
 
+  /**
+   * cargarxml
+   * obtiene los datos del archivo xml, se codifica en utf-8, se carga en una variable como array asociativo,
+   * luego se recorre este array, sacando el atributo y el resto de valores e introduciendolos en la base de datos
+   * mediante una sentencia 'insert'. Dependiendo del atributo, persona o empresa, se insertará e apellidos o email.
+   */
+  public function cargarxml()
+  {
+    $agenda = utf8_encode(file_get_contents('agenda.xml'));
+    $datos = simplexml_load_string($agenda);
+
+    foreach ($datos as $dato) {
+      $i = 1;
+
+      $atributos = $dato->attributes();
+
+      foreach ($atributos as $atributo) {
+        if ($atributo == 'empresa') {
+          $sql = $this->db->prepare("INSERT IGNORE INTO contactos (tipo, nombre, direccion, telefono, email) VALUES ('empresa', ?, ?, ?, ?)");
+        } else {
+          $sql = $this->db->prepare("INSERT IGNORE INTO contactos (tipo, nombre, apellidos, direccion, telefono) VALUES ('persona', ?, ?, ?, ?)");
+        }
+      }
+
+      // Se recorren los elementos del xml y se asignan por orden en los parámetros de la sentencia
+      foreach ($dato as $valor) {
+        $sql->bindValue($i, "$valor");
+        $i++;
+      }
+
+      $sql->execute();
+    }
+  }
+
+
+  /**
+   * comprobarcredenciales
+   * Parámetros: $nombreusu, $clave
+   * Devuelve: $creedenciales o $false
+   * Se pasa por parámetro el nombre de usuario y la clave,
+   *  se realiza una consulta de los usuarios y contraseñas almacenadas en la base de datos en la tabla de credenciales,
+   *  se recorre el resultado de la consulta y se comprueba si los parámetros pasados coinciden, en tal caso,
+   *  se crea un array con el nombre de usuario para guardarlo posteriormente en una sesión
+   *  y se devuelve este array.
+   *  En caso de no coincidir el nombre y contraseña o no realizarse la consulta, devuelve un booleano falso.
+   */
   public function comprobarcredenciales($nombreusu, $clave)
   {
     $sql = $this->db->prepare("SELECT usuario, password FROM credenciales");
     $sql->execute();
     $resultado = $sql->fetchAll();
     foreach ($resultado as $credencialesdb) {
-      echo "$credencialesdb[0] --- $credencialesdb[1]<br>";
-      if ($nombreusu === $credencialesdb[0] && $clave === $credencialesdb[1]) {
+      if ($nombreusu === $credencialesdb[0] && password_verify($clave, $credencialesdb[1])) {
         $credenciales["nombreusu"] = $nombreusu;
         return $credenciales;
       }
@@ -72,9 +122,12 @@ class App
   /**
    * auth
    * Será llamado desde la vista login
-   * Si ha recibido 'name', establecerá una cookie para el nombre y otra para la contraseña
-   * y redirigirá al metodo home
-   * si no, redirige de nuevo al método login
+   * Comprueba si las credenciales recibidas por formulario con método 'post' son válidas
+   *  mediante el método 'comprobarcredenciales' y pásandole por parámetro lo recibido,
+   *  en caso de ser falso, lo enviará a la vista 'login' de nuevo,
+   *  en caso de no ser falso, introduce el array de credenciales en una sesión,
+   *  carga los datos del xml en la base de datos mediante el método 'cargarxml' y redirige al método 'home',
+   *  para ir a la pantalla principal.
    */
   public function auth()
   {
@@ -86,6 +139,7 @@ class App
           header("Location: ?method=login");
         } else {
           $_SESSION["usuariook"] = $credentials;
+          $this->cargarxml();
           header("Location: ?method=home");
           exit();
         }
@@ -96,92 +150,157 @@ class App
   /**
    * home
    * Es llamado desde el método 'auth'
-   * si la cookie 'deseos' esta establecida la deserializa para obetener la información de los bytes y la guarda
-   * si no, crea un array.
-   * Siempre que la cookie 'name' esté establecida incluirá la vista 'home.php'
-   * donde se mostrará la infomación de la lista de deseos
+   * si la sesion 'usuariook' no está establecida redirige al método 'login' de vuelta.
+   * si no, 
+   * guarda en todos todos lo contactos de la base de datos mediante le método 'todosContactos',
+   * si se recibe por 'post' que se ha pulsado el botón de buscar contacto o el de modificar,
+   * se guarda en una variable distinta el array con los datos del contacto recibidos mediante el método 'buscarContacto'
+   * y se incluye la vista 'home'.
    */
   public function home()
   {
     if (!isset($_SESSION["usuariook"])) {
       header('Location: ?method=login');
     } else {
-      if (isset($_SESSION['deseos'])) {
-        $deseos = unserialize($_COOKIE['deseos']);
-      } else {
-        $deseos = array();
+      $contactos = $this->todosContactos();
+      if (isset($_POST['envioBusqueda'])) {
+        $busqueda = $this->buscarContacto();
+      }
+      if (isset($_POST['envioModificar'])) {
+        $modificar = $this->buscarContacto();
       }
       include('views/home.php');
     }
   }
 
+
   /**
-   * new
-   * Deserializa los datos de la cookie 'deseos' en caso de estar establecida y los guarda en un array
-   * o crea un array nuevo en caso distinto
-   * Añade el nuevo deseo recibido por formulario al array y lo vuelve a poner como cookie
-   * Finalmente, redirecciona al metodo 'home' de nuevo
+   * todosContactos
+   * Devuelve: $contactos, array asociativo
+   * hace una consulta seleccionando todos los datos de la tabla 'contactos' de la base de datos,
+   * lo guarda como un array asociativo y lo devuelve.
    */
-  public function new()
+  public function todosContactos()
   {
-    if (!isset($_POST['new'])) {
-      header('Location: index.php?method=home');
-    } else {
-      if (isset($_COOKIE['deseos'])) {
-        $deseos = unserialize($_COOKIE['deseos']);
-      } else {
-        $deseos = [];
+    $sql = $this->db->prepare("SELECT * FROM contactos");
+    $sql->execute();
+    $contactos = $sql->fetchAll(PDO::FETCH_ASSOC);
+
+    return $contactos;
+  }
+
+
+  /**
+   * buscarContacto
+   * Si se recibe un nombre para buscar, realiza una consulta en la base de datos que contenga ese nombre.
+   * Si se recibe un número para buscar, realiza una consulta en la base de datos que tenga ese número como teléfono.
+   * Devuelve: El resultado de esa consulta como array asociativo.
+   */
+  public function buscarContacto()
+  {
+    if(isset($_POST['nombreBusqueda'])){
+      $nombreBusqueda = $_POST['nombreBusqueda'];
+      $sql = $this->db->prepare("SELECT * FROM contactos WHERE nombre LIKE '%$nombreBusqueda%'");
+    }
+    if(isset($_POST['numero'])){
+      $numeroBusqueda = $_POST['numero'];
+      $sql = $this->db->prepare("SELECT * FROM contactos WHERE telefono = '$numeroBusqueda'");
+    }
+    $sql->execute();
+    $contacto = $sql->fetchAll(PDO::FETCH_ASSOC);
+
+    return $contacto;
+  }
+
+
+  /**
+   * crearContacto
+   * Recibe los datos de un formulario,
+   * realiza una inserción en la bbdd en la tabla contactos con los datos recibidos,
+   * según si es de tipo perdona o contacto, se introduce apellidos o email.
+   * Redirige al método 'home'.
+   */
+  public function crearContacto()
+  {
+    if (isset($_POST["envioContacto"])) {
+      $tipo = $_POST['tipo'];
+      $nombre = $_POST['nombre'];
+      $direccion = $_POST['direccion'];
+      $telefono = $_POST['telefono'];
+
+      switch ($tipo) {
+        case 'persona':
+          $apellidos = $_POST['apellidos'];
+          $sql = $this->db->prepare("INSERT IGNORE INTO contactos (tipo, nombre, direccion, telefono, apellidos) VALUES ('$tipo', '$nombre', '$direccion', '$telefono', '$apellidos')");
+          $sql->execute();
+          break;
+        case 'empresa':
+          $email = $_POST['email'];
+          $sql = $this->db->prepare("INSERT IGNORE INTO contactos (tipo, nombre, direccion, telefono, email) VALUES ($tipo, $nombre, $direccion, $telefono, $email)");
+          $sql->execute();
+          break;
       }
-      $deseos[] = $_POST['new'];
-      setcookie('deseos', serialize($deseos), strtotime("60 minutes"));
-      header('Location: index.php?method=home');
     }
+    header('Location: ?method=home');
   }
 
+
   /**
-   * delete
-   * Deserializa los datos de la cookie 'deseos' en caso de estar establecida y los guarda en un array
-   * o crea un array nuevo en caso distinto
-   * Elimina el deseo con el id recibido por formulario del array y lo vuelve a poner como cookie
-   * Finalmente, redirecciona al metodo 'home' de nuevo
+   * borrarContacto
+   * Borra de la tabla contactos de la bbdd la fila con el dato telefono igual al número recibido por 'post'
+   * Redirige al método 'home'
    */
-  public function delete()
+  public function borrarContacto()
   {
-    if (isset($_COOKIE['deseos'])) {
-      $deseos = unserialize($_COOKIE['deseos']);
-    } else {
-      $deseos = [];
+    if (isset($_POST['envioEliminar'])) {
+      $numero = $_POST['numero'];
+      $sql = $this->db->prepare("DELETE FROM contactos WHERE telefono = '$numero'");
+      $sql->execute();
     }
-    $id = $_GET['id'];
-    unset($deseos[$id]);
-    setcookie('deseos', serialize($deseos), strtotime("60 minutes"));
-    header('Location: index.php?method=home');
+    header('Location: ?method=home');
   }
+
 
   /**
-   * empty
-   * vacía la cookie 'deseos' y vuelve al método 'home'
+   * modificarContacto
+   * Recibe los datos de un formulario,
+   * realiza una actualización en la bbdd en la tabla contactos con los datos recibidos,
+   * según si es de tipo perdona o contacto, se actualiza apellidos o email.
+   * Redirige al método 'home'.
    */
-  public function empty()
+  public function modificarContacto()
   {
-    setcookie('deseos', '', time() - 7000);
-    header('Location: index.php?method=home');
+    if (isset($_POST["envioActualizar"])) {
+      $numero = $_POST['numeroAnterior'];
+      $tipo = $_POST['tipo'];
+      $nombre = $_POST['nombre'];
+      $direccion = $_POST['direccion'];
+      $telefono = $_POST['telefono'];
+      switch ($tipo) {
+        case 'persona':
+          $apellidos = $_POST['apellidos'];
+          $sql = $this->db->prepare("UPDATE contactos SET nombre = '$nombre', direccion = '$direccion', telefono = '$telefono', apellidos = '$apellidos' WHERE telefono = '$numero'");
+          $sql->execute();
+          break;
+        case 'empresa':
+          $email = $_POST['email'];
+          $sql = $this->db->prepare("UPDATE contactos SET nombre = '$nombre', direccion = '$direccion', telefono = '$telefono', email = '$email' WHERE telefono = '$numero'");
+          $sql->execute();
+          break;
+      }
+    }
+    header('Location: ?method=home');
   }
+
 
   /**
-   * close
-   * Elimina todas las cookies
-   * y redirige al método 'login'
+   * subirFichero
+   * Recibe un fichero de un formulario
+   * comprueba que el fichero cumpla con el formato png, jpg o pdf y que tenga un tamaño menor a 5 MB,
+   * si cumple sube el archivo a la carpeta 'uploads' en le directorio raiz y se envía un parámetro para luego indicarlo en la vista,
+   * si no cumple, envía un parámetro con el tipo de error, para luego mostrarlo en la vista.
+   * Redirige al método 'home'.
    */
-  public function close()
-  {
-    setcookie('deseos', '',  time() - 7000);
-    setcookie('name', '',  time() - 7000);
-    setcookie('password', '',  time() - 7000);
-    header('Location: index.php?method=login');
-  }
-
-
   public function subirfichero()
   {
     if (isset($_POST["envio"])) {
@@ -200,5 +319,19 @@ class App
       }
     }
     header('Location: ?method=home');
+  }
+
+
+  /**
+   * Si hay sesión cierra y borra la sesión y redirige al método 'login'
+   */
+  public function cerrar()
+  {
+    if (isset($_SESSION["usuariook"])) {
+      $_SESSION = array();
+      session_destroy();
+      setcookie(session_name(), '', time() - 7200, '/');
+    }
+    header("Location: ?method=login");
   }
 }

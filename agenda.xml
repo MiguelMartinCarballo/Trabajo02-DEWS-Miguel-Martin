@@ -1,4 +1,4 @@
-ï»¿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <agenda nombre="ContactosTrabajo">
 	<contacto tipo="persona">
 		<nombre>Ana</nombre>
@@ -20,13 +20,13 @@
 	</contacto>
 	<contacto tipo="empresa">
 		<nombre>Gestyser</nombre>		
-		<direccion>PolÃ­gono los Planos 4</direccion>
+		<direccion>Polígono los Planos 4</direccion>
 		<telefono>978145266</telefono>		
 		<email>info@gestyser.com</email>		
 	</contacto>
 	<contacto tipo="empresa">
 		<nombre>Contadata</nombre>		
-		<direccion>PolÃ­gono la Albareda 15</direccion>
+		<direccion>Polígono la Albareda 15</direccion>
 		<telefono>976147788</telefono>		
 		<email>informacion@contadata.info</email>		
 	</contacto>
